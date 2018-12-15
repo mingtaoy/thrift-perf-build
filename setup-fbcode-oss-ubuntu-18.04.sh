@@ -82,7 +82,7 @@ assert_has_commit() {
     local dir=$1
     local commit=$2
     pushd $dir >/dev/null
-    if !git merge-base --is-ancestor "$commit" HEAD; then
+    if ! git merge-base --is-ancestor "$commit" HEAD; then
         die "Expected to have commit $commit in $dir"
     fi
     popd >/dev/null
@@ -175,7 +175,7 @@ install_proxygen() {
 
 
 install_rsocket() {
-    [ -e "$FBCODE_PREFIX/lib/cmake/rsocket"] && return
+    [ -e "$FBCODE_PREFIX/lib/cmake/rsocket" ] && return
     if [ ! -d "$FBCODE_PREFIX/src/rsocket" ] ; then
         git clone https://github.com/rsocket/rsocket-cpp.git "$FBCODE_PREFIX/src/rsocket"
         assert_has_commit "$FBCODE_PREFIX/src/rsocket" 752a99fecde36047299bb3f82f11abb6373206bc
@@ -194,10 +194,9 @@ setup_fb_components() {
     set -x
     local order=$(get_install_order)
     for item in $order; do
-        (
-            set -ue
-            "install_$item"
-        )
+        pushd $(pwd) >/dev/null
+        "install_$item"
+        popd
     done
     set +x
 }
