@@ -1,5 +1,6 @@
 FROM ubuntu:bionic
-VOLUME ["/fbcode"]
-ADD ./setup-fbcode-oss-ubuntu-18.04.sh /tmp/bootstrap.sh
-RUN env FBCODE_PREFIX=/fbcode /bin/bash /tmp/bootstrap.sh
+COPY ./setup-fbcode-oss-ubuntu-18.04.sh /tmp/bootstrap.sh
+COPY ./patches/ /tmp/docker_patches/
+RUN env FBCODE_PREFIX=/fbcode FBCODE_PATCHES_DIR=/tmp/docker_patches \
+        /bin/bash /tmp/bootstrap.sh && rm -rf /tmp/docker_patches
 ENTRYPOINT /bin/bash

@@ -65,6 +65,7 @@ get_install_order() {
 openssl folly
 folly wangle
 folly fizz
+folly rsocket
 fizz wangle
 wangle thrift
 wangle proxygen
@@ -241,6 +242,7 @@ download_artifact() {
 setup_fb_components() {
     set -x
     local order=$(get_install_order)
+    log "Installation order: $order"
     for item in $order; do
         local cur=$(pwd)
         "install_$item"
