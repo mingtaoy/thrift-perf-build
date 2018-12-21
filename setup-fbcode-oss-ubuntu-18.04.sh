@@ -7,7 +7,11 @@
 # the environment before this script is run.
 
 FBCODE_PREFIX=${FBCODE_PREFIX-}
+FBCODE_PATCHES_DIR=${FBCODE_PATCHES_DIR-/fbcode/patches/}
 export FBCODE_PREFIX
+
+OPENSSL_DOWNLOAD_URL=${OPENSSL_DOWNLOAD_URL-'https://www.openssl.org/source/openssl-1.1.0j.tar.gz'}
+
 
 log() {
     echo "[$0]: $*" >&2
@@ -46,6 +50,7 @@ setup_system_libraries() {
         gperf \
         wget \
         unzip \
+        curl \
 
 }
 
@@ -57,6 +62,7 @@ sanity_check() {
 
 get_install_order() {
     tsort << 'EOF'
+openssl folly
 folly wangle
 folly fizz
 fizz wangle
@@ -88,7 +94,7 @@ assert_has_commit() {
     popd >/dev/null
 }
 
-CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${FBCODE_PREFIX} -DCMAKE_INSTALL_PREFIX=${FBCODE_PREFIX} -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_POSITION_INDEPENDENT_CODE=On"
+CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${FBCODE_PREFIX} -DCMAKE_INSTALL_PREFIX=${FBCODE_PREFIX} -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_POSITION_INDEPENDENT_CODE=On -DOPENSSL_ROOT_DIR=/fbcode"
 LDFLAGS="-Wl,-rpath=$FBCODE_PREFIX/lib ${LDFLAGS-}"
 PKG_CONFIG_PATH="${FBCODE_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH-}"
 
@@ -190,16 +196,59 @@ install_rsocket() {
     fi
 }
 
+install_openssl() {
+    local openssl_src_dir="$FBCODE_PREFIX/src/openssl"
+    if [ -d "$openssl_src_dir" ] ; then
+        return
+    fi
+
+    local openssl_archive_name="$(basename "$OPENSSL_DOWNLOAD_URL")"
+    local downloaded_path=$(download_artifact "$OPENSSL_DOWNLOAD_URL" "$openssl_archive_name")
+
+    mkdir -p "$openssl_src_dir"
+    tar -xvf "$downloaded_path" --strip-components=1 -C "$openssl_src_dir"
+    cd "$openssl_src_dir"
+    local openssl_patches_dir="$FBCODE_PATCHES_DIR/openssl"
+    if [ -d "$openssl_patches_dir" ] ; then
+        for p in "$openssl_patches_dir"/*.patch; do
+            patch -p1 < "$p"
+        done
+    fi
+
+    ./config --prefix="$FBCODE_PREFIX"
+    make -j $(nproc)
+    make install
+    if [ -d "$FBCODE_PREFIX/ssl/certs" ]; then
+        rm -rf "$FBCODE_PREFIX/ssl/certs"
+        ln -sf /etc/ssl/certs "$FBCODE_PREFIX/ssl/certs"
+    fi
+}
+
+download_artifact() {
+    local url="$1"
+    local target_name="$2"
+    mkdir -p ${FBCODE_PREFIX}/tmp
+    local out="${FBCODE_PREFIX}/tmp/${target_name}"
+    echo "$out"
+
+    if [ -e "$out" ]; then
+        return
+    fi
+
+    curl -o "$out" -fSL "$url"
+}
+
 setup_fb_components() {
     set -x
     local order=$(get_install_order)
     for item in $order; do
-        pushd $(pwd) >/dev/null
+        local cur=$(pwd)
         "install_$item"
-        popd
+        cd "$cur"
     done
     set +x
 }
+
 
 if [ -z "$FBCODE_PREFIX" ]; then
     die "FBCODE_PREFIX is not set. Refusing to run".
@@ -211,4 +260,3 @@ ensure_root
 sanity_check
 setup_system_libraries
 setup_fb_components
-
