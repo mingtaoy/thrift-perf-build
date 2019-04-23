@@ -6,8 +6,9 @@
 # Everything will be done relative to FBCODE_PREFIX, which must be set in
 # the environment before this script is run.
 
+ROOT="$(dirname "$(readlink -f "$0")")"
 FBCODE_PREFIX=${FBCODE_PREFIX-}
-FBCODE_PATCHES_DIR=${FBCODE_PATCHES_DIR-/fbcode/patches/}
+FBCODE_PATCHES_DIR=${FBCODE_PATCHES_DIR-$ROOT/patches/}
 export FBCODE_PREFIX
 
 OPENSSL_DOWNLOAD_URL=${OPENSSL_DOWNLOAD_URL-'https://www.openssl.org/source/openssl-1.1.0j.tar.gz'}
@@ -75,13 +76,14 @@ rsocket thrift
 EOF
 }
 
-find_latest_tag() {
-    local tag_file="${FBCODE_PREFIX}/build/first_tag";
-    if [ ! -f "$tag_file" ]; then
-        mkdir -p $(dirname "$tag_file")
-        git tag -l "v$(date +%Y.%m)*" | tail -n 1 | tee $tag_file
+get_repo_commit() {
+    local repo="$1"
+    if [[ "$repo" == "mingtaoy-fbthrift" ]]; then
+      echo "perf_build"
+    elif [[ "$repo" == "rsocket" ]]; then
+      echo "752a99fecde36047299bb3f82f11abb6373206bc"
     else
-        cat "$tag_file"
+      echo "v2018.12.24.00"
     fi
 }
 
@@ -106,7 +108,7 @@ install_folly() {
     [ -e "$FBCODE_PREFIX/build/folly/Makefile" ] && return
     git clone https://github.com/facebook/folly "$FBCODE_PREFIX/src/folly"
     cd "$FBCODE_PREFIX/src/folly"
-    git reset --hard $(find_latest_tag)
+    git reset --hard $(get_repo_commit "folly")
     mkdir -p "$FBCODE_PREFIX/build/folly" && cd "$FBCODE_PREFIX/build/folly"
     cmake $CMAKE_ARGS "$FBCODE_PREFIX/src/folly"
     make -j $(nproc)
@@ -118,7 +120,7 @@ install_wangle() {
     [ -e "$FBCODE_PREFIX/build/wangle/Makefile" ] && return
     git clone https://github.com/facebook/wangle.git "$FBCODE_PREFIX/src/wangle"
     cd "$FBCODE_PREFIX/src/wangle"
-    git reset --hard $(find_latest_tag)
+    git reset --hard $(get_repo_commit "wangle")
     mkdir -p "$FBCODE_PREFIX/build/wangle" && cd "$FBCODE_PREFIX/build/wangle"
     cmake $CMAKE_ARGS "$FBCODE_PREFIX/src/wangle/wangle"
     make -j $(nproc)
@@ -138,9 +140,9 @@ install_fizz() {
     [ -e "$FBCODE_PREFIX/build/fizz/Makefile" ] && return
     git clone https://github.com/facebookincubator/fizz "$FBCODE_PREFIX/src/fizz"
     cd "$FBCODE_PREFIX/src/fizz"
-    git reset --hard $(find_latest_tag)
+    git reset --hard $(get_repo_commit "fizz")
     mkdir -p "$FBCODE_PREFIX/build/fizz" && cd "$FBCODE_PREFIX/build/fizz"
-    cmake $CMAKE_ARGS "$FBCODE_PREFIX/src/fizz/fizz"
+    cmake $CMAKE_ARGS -DBUILD_TESTS=No "$FBCODE_PREFIX/src/fizz/fizz"
     make -j $(nproc)
     make install
 }
@@ -151,6 +153,8 @@ install_thrift() {
     # For now, use my fork of fbthrift which has perf build support
     if [ ! -d "$FBCODE_PREFIX/src/thrift" ] ; then
         git clone -b perf_build https://github.com/mingtaoy/fbthrift.git "$FBCODE_PREFIX/src/thrift"
+        cd "$FBCODE_PREFIX/src/thrift"
+        git reset --hard $(get_repo_commit "mingtaoy-fbthrift")
     fi
 
     cd "$FBCODE_PREFIX/src/thrift"
@@ -158,12 +162,15 @@ install_thrift() {
     cmake $CMAKE_ARGS "$FBCODE_PREFIX/src/thrift"
     make -j $(nproc)
     make install
+    cp "$FBCODE_PREFIX/build/thrift/bin/"{ThriftServer,loadgen} "$FBCODE_PREFIX/bin"
 }
 
 install_proxygen() {
     [ -e "$FBCODE_PREFIX/src/proxygen/proxygen/configure" ] && return
     if [ ! -d "$FBCODE_PREFIX/src/proxygen" ]; then
         git clone https://github.com/facebook/proxygen.git "$FBCODE_PREFIX/src/proxygen"
+        cd "$FBCODE_PREFIX/src/proxygen"
+        git reset --hard $(get_repo_commit "proxygen")
         assert_has_commit "$FBCODE_PREFIX/src/proxygen" 49727c7f7358b8eaa99cf2c1d910eea7cfb579d0
     fi
 
@@ -185,7 +192,8 @@ install_rsocket() {
     [ -e "$FBCODE_PREFIX/lib/cmake/rsocket" ] && return
     if [ ! -d "$FBCODE_PREFIX/src/rsocket" ] ; then
         git clone https://github.com/rsocket/rsocket-cpp.git "$FBCODE_PREFIX/src/rsocket"
-        assert_has_commit "$FBCODE_PREFIX/src/rsocket" 752a99fecde36047299bb3f82f11abb6373206bc
+        cd "$FBCODE_PREFIX/src/rsocket"
+        git reset --hard $(get_repo_commit "rsocket")
     fi
 
     if [ ! -d "$FBCODE_PREFIX/build/rsocket" ]; then
